@@ -1,0 +1,6 @@
+# Flow Compensator for Prusa Slicer
+# Post-processing script to compensate for underextrusion at high flow rates
+
+PyYAML>=6.0
+scipy>=1.9.0
+numpy>=1.21.0

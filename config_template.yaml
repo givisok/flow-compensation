@@ -1,0 +1,255 @@
+# =============================================================================
+# Flow Compensator Configuration Template
+# =============================================================================
+# Post-processing script for Prusa Slicer to compensate for underextrusion
+# at high volumetric flow rates.
+#
+# This template contains detailed documentation for all configuration options.
+# Copy this file to 'config.yaml' and customize for your setup.
+# =============================================================================
+
+# ------------------------------------------------------------------------------
+# Interpolation Settings
+# ------------------------------------------------------------------------------
+interpolation:
+  # Type of interpolation to use for compensation curve
+  # Options:
+  #   - cubic_spline: Smooth curve passing through all control points (recommended)
+  type: cubic_spline
+
+# ------------------------------------------------------------------------------
+# Material-Specific Profiles
+# ------------------------------------------------------------------------------
+# Each material has its own compensation curve based on its flow characteristics.
+# Curve points are specified as [flow_rate_mm3_s, compensation_multiplier]
+#
+# To create your own profile:
+# 1. Print a flow rate test at various speeds
+# 2. Measure underextrusion at each flow rate
+# 3. Create curve points that compensate for the measured underextrusion
+#    (e.g., if you measure -10% underextrusion at 50 mm³/s, use 1.10 multiplier)
+#
+# Flow rate calculation:
+#   flow_rate = (extrusion_amount * filament_area / move_distance) * feedrate
+#
+materials:
+  # ------------------------------------------------------------------------------
+  # PETG Profile
+  # ------------------------------------------------------------------------------
+  PETG:
+    name: "PETG"
+    description: "Standard PETG compensation for high-flow hotends"
+    # Based on measured underextrusion data from flow rate testing
+    curve_points:
+      # Format: [flow_rate (mm³/s), compensation_multiplier]
+      # Multiplier of 1.0 = no compensation
+      # Multiplier of 1.10 = +10% extrusion
+      - [0, 1.00]     # 0 mm³/s: no compensation (baseline)
+      - [10, 1.00]    # 10 mm³/s: no compensation (safe range)
+      - [20, 1.02]    # 20 mm³/s: +2% (compensate mild underextrusion)
+      - [30, 1.06]    # 30 mm³/s: +6% (compensate ~6% underextrusion)
+      - [40, 1.10]    # 40 mm³/s: +10%
+      - [50, 1.13]    # 50 mm³/s: +13% (compensate ~11% underextrusion)
+      - [60, 1.18]    # 60 mm³/s: +18% (compensate ~15% underextrusion)
+
+  # ------------------------------------------------------------------------------
+  # PLA Profile
+  # ------------------------------------------------------------------------------
+  PLA:
+    name: "PLA"
+    description: "PLA typically needs less compensation due to better flow"
+    curve_points:
+      - [0, 1.00]
+      - [15, 1.00]    # Start compensating at 15 mm³/s
+      - [25, 1.02]
+      - [35, 1.05]
+      - [45, 1.08]
+      - [55, 1.12]
+
+  # ------------------------------------------------------------------------------
+  # ABS Profile
+  # ------------------------------------------------------------------------------
+  ABS:
+    name: "ABS"
+    description: "ABS printed at higher temperatures typically flows better"
+    curve_points:
+      - [0, 1.00]
+      - [12, 1.00]
+      - [22, 1.03]
+      - [32, 1.07]
+      - [42, 1.11]
+      - [52, 1.15]
+
+  # ------------------------------------------------------------------------------
+  # ASA Profile
+  # ------------------------------------------------------------------------------
+  ASA:
+    name: "ASA"
+    description: "ASA similar to ABS"
+    curve_points:
+      - [0, 1.00]
+      - [12, 1.00]
+      - [22, 1.03]
+      - [32, 1.07]
+      - [42, 1.11]
+      - [52, 1.15]
+
+  # ------------------------------------------------------------------------------
+  # TPU Profile
+  # ------------------------------------------------------------------------------
+  TPU:
+    name: "TPU"
+    description: "Flexible filament - more aggressive compensation needed"
+    curve_points:
+      - [0, 1.00]
+      - [8, 1.00]     # Start compensating earlier due to poor flow
+      - [15, 1.05]
+      - [25, 1.10]
+      - [35, 1.15]
+      - [45, 1.20]
+
+  # ------------------------------------------------------------------------------
+  # PETG Carbon Fiber Profile
+  # ------------------------------------------------------------------------------
+  PETG_CF:
+    name: "PETG Carbon Fiber"
+    description: "Carbon fiber filled filaments need more compensation"
+    curve_points:
+      - [0, 1.00]
+      - [10, 1.00]
+      - [20, 1.03]
+      - [30, 1.08]
+      - [40, 1.13]
+      - [50, 1.18]
+      - [60, 1.22]
+
+  # ------------------------------------------------------------------------------
+  # Nylon/Polyamide Profile
+  # ------------------------------------------------------------------------------
+  PA:
+    name: "Polyamide (Nylon)"
+    description: "Nylon/polyamide filaments"
+    curve_points:
+      - [0, 1.00]
+      - [10, 1.00]
+      - [20, 1.02]
+      - [30, 1.06]
+      - [40, 1.10]
+      - [50, 1.14]
+
+  # ------------------------------------------------------------------------------
+  # Polycarbonate Profile
+  # ------------------------------------------------------------------------------
+  PC:
+    name: "Polycarbonate"
+    description: "Polycarbonate at high temperatures"
+    curve_points:
+      - [0, 1.00]
+      - [12, 1.00]
+      - [22, 1.03]
+      - [32, 1.07]
+      - [42, 1.11]
+      - [52, 1.15]
+
+  # ------------------------------------------------------------------------------
+  # Default Profile
+  # ------------------------------------------------------------------------------
+  # This profile is used when:
+  # - The material type is not detected in the G-code
+  # - The detected material is not defined in this config
+  default:
+    name: "Default"
+    description: "Conservative default profile - safe for most materials"
+    curve_points:
+      - [0, 1.00]
+      - [15, 1.00]
+      - [25, 1.03]
+      - [35, 1.07]
+      - [45, 1.10]
+      - [55, 1.13]
+
+# ------------------------------------------------------------------------------
+# Detection Settings
+# ------------------------------------------------------------------------------
+detection:
+  # Default filament diameter if not found in G-code
+  # Most printers use 1.75mm, some use 2.85mm
+  filament_diameter: 1.75  # mm
+
+  # Layer height detection
+  # - "auto": Parse from G-code header comments
+  # - numeric value: Use fixed value
+  layer_height: auto
+
+  # Line width detection
+  # - "auto": Parse from G-code header comments
+  # - numeric value: Use fixed value
+  line_width: auto
+
+# ------------------------------------------------------------------------------
+# Auto-Detection Settings
+# ------------------------------------------------------------------------------
+auto_detect:
+  # Enable automatic material type detection from G-code
+  # Looks for patterns like: "; filament_type = PETG"
+  filament_type: true
+
+  # Fallback material when detection fails or material not found
+  # Must match one of the material names above
+  fallback_material: default
+
+# ------------------------------------------------------------------------------
+# Output Settings
+# ------------------------------------------------------------------------------
+output:
+  # Add comments to G-code showing applied compensation
+  # Example: "G1 ... E1.23456 ; flow_comp: 45.2mm³/s ×1.085"
+  # Set to false for cleaner G-code
+  log_changes: true
+
+  # Safety limits for compensation multiplier
+  # Prevents excessive compensation that could cause over-extrusion
+  min_compensation: 0.8   # Never go below 0.8x (20% reduction)
+  max_compensation: 1.5   # Never go above 1.5x (50% increase)
+
+  # Print statistics after processing
+  # Shows: total moves, compensated moves, flow rate range, multiplier range
+  statistics: true
+
+# ------------------------------------------------------------------------------
+# Creating Custom Profiles
+# ------------------------------------------------------------------------------
+# To create a custom profile for your setup:
+#
+# 1. PRINT A FLOW RATE TEST:
+#    - Use a test model like "Goliath flowrate test" or similar
+#    - Print at various speed settings
+#    - Measure wall thickness or extrusion quality
+#
+# 2. CALCULATE UNDEREXTRUSION:
+#    - Measure actual vs expected wall thickness
+#    - Or use calibrated flow test patterns
+#    - Underextrusion % = (expected - actual) / expected * 100
+#
+# 3. CREATE CURVE POINTS:
+#    - For each flow rate, set multiplier = 1 + (underextrusion% / 100)
+#    - Example: If you have -10% underextrusion at 50 mm³/s:
+#      multiplier = 1 + (-10 / 100) = 1.10
+#      curve_point: [50, 1.10]
+#
+# 4. TIP: Start conservative (lower multipliers) and gradually increase
+#    based on print results. Over-compensation causes over-extrusion!
+#
+# ------------------------------------------------------------------------------
+# Notes on Cubic Spline Interpolation
+# ------------------------------------------------------------------------------
+# Cubic spline creates a smooth curve that passes through all your control points.
+# Between defined points, the compensation is smoothly interpolated.
+#
+# Example with points [0, 1.0], [30, 1.06], [50, 1.13]:
+# - At 15 mm³/s: ~1.015 (slight compensation)
+# - At 40 mm³/s: ~1.095 (between 1.06 and 1.13)
+# - At 60 mm³/s: ~1.19 (extrapolated beyond last point)
+#
+# The curve is natural (second derivative = 0) at endpoints for smooth behavior.
+# ------------------------------------------------------------------------------

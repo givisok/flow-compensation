@@ -1,0 +1,162 @@
+# Flow Compensator Configuration
+# Post-processing script for Prusa Slicer to compensate for underextrusion at high flow rates
+
+interpolation:
+  type: pchip  # PCHIP (monotonic cubic) - smooth curve without overshoots/ripples
+
+# Material-specific profiles
+materials:
+  PETG:
+    name: "PETG"
+    description: "PETG compensation based on flow rate test at 248C (K3D Microfeeder)"
+    # Based on measured underextrusion data from Goliath flowrate test
+    # Source: actual test measurements
+    curve_points:
+      - [0, 1.00]    # flow_rate (mm³/s) -> compensation_multiplier
+      - [10, 1.00]   # Below 10 mm³/s: no compensation needed
+      - [15, 1.016]  # 15 mm³/s: -1.55% underextrusion → ×1.0155
+      - [20, 1.025]  # 20 mm³/s: -2.5% underextrusion → ×1.025
+      - [30, 1.060]  # 30 mm³/s: -6% underextrusion → ×1.060
+      - [40, 1.080]  # 40 mm³/s: -8% underextrusion → ×1.080
+      - [50, 1.091]  # 50 mm³/s: -9.14% underextrusion → ×1.091
+      - [60, 1.110]  # 60 mm³/s: ~-11% underextrusion → ×1.110
+
+  PLA:
+    name: "PLA"
+    description: "PLA typically needs less compensation"
+    curve_points:
+      - [0, 1.00]
+      - [15, 1.00]
+      - [25, 1.02]
+      - [35, 1.05]
+      - [45, 1.08]
+      - [55, 1.12]
+
+  ABS:
+    name: "ABS"
+    description: "ABS at higher temperatures"
+    curve_points:
+      - [0, 1.00]
+      - [12, 1.00]
+      - [22, 1.03]
+      - [32, 1.07]
+      - [42, 1.11]
+      - [52, 1.15]
+
+  ASA:
+    name: "ASA"
+    description: "ASA similar to ABS"
+    curve_points:
+      - [0, 1.00]
+      - [12, 1.00]
+      - [22, 1.03]
+      - [32, 1.07]
+      - [42, 1.11]
+      - [52, 1.15]
+
+  TPU:
+    name: "TPU"
+    description: "Flexible filament - more aggressive compensation"
+    curve_points:
+      - [0, 1.00]
+      - [8, 1.00]
+      - [15, 1.05]
+      - [25, 1.10]
+      - [35, 1.15]
+      - [45, 1.20]
+
+  PETG_CF:
+    name: "PETG Carbon Fiber"
+    description: "Carbon fiber filled PETG - more aggressive compensation needed"
+    curve_points:
+      - [0, 1.00]
+      - [10, 1.00]
+      - [20, 1.03]
+      - [30, 1.08]
+      - [40, 1.13]
+      - [50, 1.18]
+      - [60, 1.22]
+
+  PA:
+    name: "Polyamide (Nylon)"
+    description: "Nylon/polyamide filaments"
+    curve_points:
+      - [0, 1.00]
+      - [10, 1.00]
+      - [20, 1.02]
+      - [30, 1.06]
+      - [40, 1.10]
+      - [50, 1.14]
+
+  PC:
+    name: "Polycarbonate"
+    description: "Polycarbonate at high temperatures"
+    curve_points:
+      - [0, 1.00]
+      - [12, 1.00]
+      - [22, 1.03]
+      - [32, 1.07]
+      - [42, 1.11]
+      - [52, 1.15]
+
+  default:
+    name: "Default"
+    description: "Conservative default profile"
+    curve_points:
+      - [0, 1.00]
+      - [15, 1.00]
+      - [25, 1.03]
+      - [35, 1.07]
+      - [45, 1.10]
+      - [55, 1.13]
+
+  PVA:
+    name: "PVA Support"
+    description: "PVA soluble support material"
+    curve_points:
+      - [0, 1.00]
+      - [10, 1.00]
+      - [15, 1.02]
+      - [20, 1.03]
+      - [25, 1.04]
+      - [30, 1.05]
+
+# Multi-material IDEX/Toolchanger setup
+# Maps tool numbers (T0, T1, T2, ...) to material profiles
+# Leave empty for single-extruder printers (uses --material or auto-detection)
+extruder_mapping:
+  # T0: PETG   # Tool 0 - Uncomment and set your material
+  # T1: PVA    # Tool 1 - Uncomment for support material
+  # T2: PLA    # Tool 2 - Uncomment as needed
+  # T3: ABS    # Tool 3 - Uncomment as needed
+
+  # Example for IDEX with 4 tools:
+  # T0: PETG   # Model material
+  # T1: PVA    # Soluble support
+  # T2: PLA    # Another model material
+  # T3: ABS    # Another model material
+
+  # Example for Prusa XL (5 tools):
+  # T0: PETG
+  # T1: PLA
+  # T2: ASA
+  # T3: TPU
+  # T4: PA
+
+# Detection settings
+detection:
+  filament_diameter: 1.75  # mm - default if not found in G-code
+  layer_height: auto       # auto: parse from G-code, or set fixed value
+  line_width: auto         # auto: parse from G-code, or set fixed value
+
+# Auto-detection from G-code comments
+auto_detect:
+  filament_type: true      # Auto-detect material from ; filament_type = PETG
+  fallback_material: default
+
+# Output settings
+output:
+  log_changes: true        # Add comments to G-code showing applied compensation
+  min_compensation: 0.8    # Safety limits (never go below 0.8x)
+  max_compensation: 1.5    # Safety limits (never go above 1.5x)
+  statistics: true         # Print statistics after processing

@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+*.bak
+
+# Test files
+*.gcode
+test_*
+*_output.gcode
+*_out.gcode
+*_single.gcode
+*_multi.gcode
+*_final.gcode
+*_pchip.gcode
+
+# Keep example test files if needed
+!test_example.gcode
+
+# Config (use template instead)
+# config.yaml - users should have their own local copy
+config_local.yaml
