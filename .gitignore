@@ -39,7 +39,7 @@ Thumbs.db
 
 # Test files
 *.gcode
-test_*
+test_*.gcode
 *_output.gcode
 *_out.gcode
 *_single.gcode
