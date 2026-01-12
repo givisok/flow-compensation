@@ -452,6 +452,9 @@ Examples:
   # Specify material explicitly
   python flow_compensator.py --material PETG input.gcode output.gcode
 
+  # Multi-material (IDEX/toolchanger) - materials map to T0, T1, T2...
+  python flow_compensator.py input.gcode output.gcode PETG PVA PLA
+
   # Dry run (analyze without modifying)
   python flow_compensator.py --dry-run input.gcode
 
@@ -468,7 +471,13 @@ Examples:
     parser.add_argument('--no-comments', action='store_true', help='Don\'t add compensation comments to G-code')
     parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed processing information')
 
-    args = parser.parse_args()
+    args, remaining = parser.parse_known_args()
+
+    # Remaining arguments are treated as materials for multi-material setup (T0, T1, T2, ...)
+    materials_from_args = []
+    for arg in remaining:
+        if not arg.startswith('-'):  # Not a flag
+            materials_from_args.append(arg.upper())
 
     # Load configuration
     config_path = Path(args.config)
@@ -505,8 +514,19 @@ Examples:
     # Initialize compensator
     compensator = FlowCompensator(config)
 
-    # Try to load multi-material setup from extruder_mapping
-    has_multi_material = compensator.load_extruder_mapping()
+    # Check if materials provided via command line (multi-material from args)
+    if materials_from_args:
+        # Create extruder_mapping from command line materials
+        print(f"Multi-material setup from command line: {len(materials_from_args)} tools")
+        for tool_num, material in enumerate(materials_from_args):
+            print(f"  T{tool_num}: {material}")
+            compensator.load_material_profile(material, tool_num)
+        has_multi_material = True
+    # Try to load multi-material setup from extruder_mapping in config
+    elif compensator.load_extruder_mapping():
+        has_multi_material = True
+    else:
+        has_multi_material = False
 
     if has_multi_material:
         # Multi-material mode
