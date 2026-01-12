@@ -17,12 +17,13 @@ This script analyzes your G-code and applies dynamic flow compensation based on 
 
 ## Features
 
-- **Per-material profiles** - PETG, PLA, ABS, ASA, TPU, Nylon, PC, and more
+- **Per-material profiles** - PETG, PLA, ABS, ASA, TPU, Nylon, PC, PVA, and more
+- **Multi-material support** - IDEX and toolchanger systems with automatic tool change detection
 - **PCHIP interpolation** - Monotonic cubic spline (smooth curves, no overshoots/ripples)
 - **Auto-detection** - Automatically detects material type from G-code comments
 - **Configurable curves** - Easy customization based on your flow testing
 - **Safety limits** - Prevents over-compensation (default: 0.8x - 1.5x)
-- **Statistics** - Shows what compensation was applied
+- **Statistics** - Shows what compensation was applied (per-tool for multi-material setups)
 - **Dry-run mode** - Analyze without modifying files
 - **Prusa Slicer integration** - Works as a post-processing script
 
@@ -75,7 +76,7 @@ python flow_compensator.py --config my_profile.yaml input.gcode output.gcode
 3. Find **Post-processing scripts**
 4. Add the following command:
 
-**Option 1: Automatic material detection (recommended)**
+**Option 1: Automatic material detection (recommended for single extruder)**
 ```
 python.exe "C:\path\to\flow_compensator.py" --config "C:\path\to\config.yaml" --material {filament_type[0]} "[output_filepath]"
 ```
@@ -83,6 +84,15 @@ python.exe "C:\path\to\flow_compensator.py" --config "C:\path\to\config.yaml" --
 **Option 2: Manual material specification**
 ```
 python.exe "C:\path\to\flow_compensator.py" --config "C:\path\to\config.yaml" --material PETG "[output_filepath]"
+```
+
+**Option 3: Multi-material IDEX / Toolchanger (automatic material mapping)**
+```
+python.exe "C:\path\to\flow_compensator.py" --config "C:\path\to\config.yaml" "[output_filepath]" {filament_type[0]} {filament_type[1]}
+```
+For IDEX with 2 extruders, materials automatically map to T0 and T1. For 4 extruders:
+```
+python.exe "C:\path\to\flow_compensator.py" --config "C:\path\to\config.yaml" "[output_filepath]" {filament_type[0]} {filament_type[1]} {filament_type[2]} {filament_type[3]}
 ```
 
 **Linux/macOS:**
@@ -94,11 +104,13 @@ python3 /path/to/flow_compensator.py --config /path/to/config.yaml --material {f
 | Variable | Description |
 |----------|-------------|
 | `{filament_type[0]}` | Filament type for extruder 1 (PETG, PLA, ABS, etc.) |
-| `{filament_type[1]}` | Filament type for extruder 2 (for multi-material setups) |
+| `{filament_type[1]}` | Filament type for extruder 2 |
+| `{filament_type[2]}` | Filament type for extruder 3 |
+| `{filament_type[3]}` | Filament type for extruder 4 |
 
 **Important notes:**
 - The script will auto-detect material from G-code comments if `--material` is not specified
-- For multi-material printers, specify the primary extruder: `{filament_type[0]}`
+- For multi-material printers (IDEX), pass materials as positional arguments: `{filament_type[0]} {filament_type[1]}`
 - Ensure the material name matches the profile names in `config.yaml` (case-insensitive)
 
 ## Configuration
@@ -137,6 +149,45 @@ output:
   min_compensation: 0.8   # Never reduce below 80%
   max_compensation: 1.5   # Never increase above 150%
 ```
+
+### Multi-Material Setup (IDEX / Toolchanger)
+
+For printers with multiple extruders (Prusa XL, IDEX, toolchanger systems), there are two configuration options:
+
+**Option 1: Configure via config.yaml**
+```yaml
+extruder_mapping:
+  T0: PETG   # Tool 0 - Main model material
+  T1: PVA    # Tool 1 - Soluble support
+  T2: PLA    # Tool 2 - Second material
+  T3: ABS    # Tool 3 - Third material
+```
+
+**Option 2: Pass materials from Prusa Slicer (recommended for IDEX)**
+```
+python.exe flow_compensator.py --config config.yaml "[output_filepath]" {filament_type[0]} {filament_type[1]}
+```
+Materials automatically map to T0, T1, T2, etc. No need to edit config.yaml!
+
+**Command line examples:**
+```bash
+# 2 extruders (IDEX)
+python flow_compensator.py input.gcode output.gcode PETG PVA
+
+# 4 extruders
+python flow_compensator.py input.gcode output.gcode PETG PVA PLA ABS
+```
+
+**How it works:**
+- The script automatically detects `T0`, `T1`, `T2`, `T3` tool change commands in G-code
+- Each tool uses its own material compensation profile
+- Statistics are shown per-tool in the output
+- G-code comments include the active tool: `; flow_comp T0: 45.2mm3/s x1.100`
+
+**Important notes:**
+- For Prusa Slicer integration, use Option 2 with `{filament_type[0]}` `{filament_type[1]}` variables
+- Leave `extruder_mapping` empty when using command-line materials
+- The script will auto-detect material from G-code when neither option is configured
 
 ## CLI Arguments
 

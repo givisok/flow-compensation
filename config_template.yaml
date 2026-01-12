@@ -14,8 +14,10 @@
 interpolation:
   # Type of interpolation to use for compensation curve
   # Options:
-  #   - cubic_spline: Smooth curve passing through all control points (recommended)
-  type: cubic_spline
+  #   - pchip: PCHIP (Piecewise Cubic Hermite Interpolating Polynomial)
+  #           Monotonic cubic spline - smooth curve WITHOUT overshoots/ripples (recommended)
+  #   - cubic_spline: Natural cubic spline - may have overshoots between control points
+  type: pchip
 
 # ------------------------------------------------------------------------------
 # Material-Specific Profiles
@@ -169,6 +171,42 @@ materials:
       - [55, 1.13]
 
 # ------------------------------------------------------------------------------
+# Multi-Material Setup (IDEX / Toolchanger)
+# ------------------------------------------------------------------------------
+# For printers with multiple extruders (Prusa XL, IDEX, toolchanger systems)
+# Maps tool numbers (T0, T1, T2, ...) to material profiles.
+#
+# When configured:
+# - The script automatically detects T0, T1, T2, ... tool change commands in G-code
+# - Each tool uses its own material compensation profile
+# - Statistics are shown per-tool in the output
+# - G-code comments include the active tool (e.g., "; flow_comp T0: 45.2mm3/s x1.100")
+#
+# IMPORTANT: Leave this section commented/empty for single-extruder printers.
+# The script will use --material argument or auto-detect from G-code.
+#
+# Example for IDEX with 4 tools:
+# extruder_mapping:
+#   T0: PETG   # Tool 0 - Main model material
+#   T1: PVA    # Tool 1 - Soluble support
+#   T2: PLA    # Tool 2 - Second material
+#   T3: ABS    # Tool 3 - Third material
+#
+# Example for Prusa XL (5 tools):
+# extruder_mapping:
+#   T0: PETG
+#   T1: PLA
+#   T2: ASA
+#   T3: TPU
+#   T4: PA
+#
+extruder_mapping:
+  # T0: PETG   # Tool 0 - Uncomment and set your material
+  # T1: PVA    # Tool 1 - Uncomment for support material
+  # T2: PLA    # Tool 2 - Uncomment as needed
+  # T3: ABS    # Tool 3 - Uncomment as needed
+
+# ------------------------------------------------------------------------------
 # Detection Settings
 # ------------------------------------------------------------------------------
 detection:
@@ -241,9 +279,10 @@ output:
 #    based on print results. Over-compensation causes over-extrusion!
 #
 # ------------------------------------------------------------------------------
-# Notes on Cubic Spline Interpolation
+# Notes on PCHIP Interpolation
 # ------------------------------------------------------------------------------
-# Cubic spline creates a smooth curve that passes through all your control points.
+# PCHIP (Piecewise Cubic Hermite Interpolating Polynomial) creates a smooth curve
+# that passes through all your control points WITHOUT overshoots or ripples.
 # Between defined points, the compensation is smoothly interpolated.
 #
 # Example with points [0, 1.0], [30, 1.06], [50, 1.13]:
@@ -251,5 +290,6 @@ output:
 # - At 40 mm³/s: ~1.095 (between 1.06 and 1.13)
 # - At 60 mm³/s: ~1.19 (extrapolated beyond last point)
 #
-# The curve is natural (second derivative = 0) at endpoints for smooth behavior.
+# The monotonic nature of PCHIP prevents artificial compensation dips that can
+# occur with natural cubic splines (e.g., 0.998x when it should be 1.000x).
 # ------------------------------------------------------------------------------
