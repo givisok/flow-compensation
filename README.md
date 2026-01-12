@@ -1,3 +1,18 @@
+# ⚠️ WARNING - USE AT YOUR OWN RISK ⚠️
+
+**THIS SOFTWARE HAS NOT BEEN TESTED ON ACTUAL 3D PRINTERS.**
+
+The compensation values and calculations are theoretical and based on limited testing. Using this script may result in:
+- **Over-extrusion** leading to poor print quality, clogged nozzles, or damage to your printer
+- **Under-extrusion** if the compensation values are incorrect for your setup
+- **G-code errors** that could cause print failures
+
+**THE AUTHOR ASSUMES NO LIABILITY AND IS NOT RESPONSIBLE FOR ANY DAMAGE TO YOUR PRINTER, MATERIAL, OR PROPERTY RESULTING FROM THE USE OF THIS SOFTWARE.**
+
+Always test with small prints first, monitor your prints closely, and verify the results match your expectations.
+
+---
+
 # Flow Compensator for Prusa Slicer
 
 Post-processing script for Prusa Slicer that dynamically compensates for underextrusion at high volumetric flow rates. This is particularly useful for high-flow hotends (e.g., Rapido HF, Dragon HF, Revo CR) that experience underextrusion at flow rates above 20 mm³/s.
