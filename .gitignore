@@ -39,7 +39,7 @@ Thumbs.db
 
 # Test files
 *.gcode
-test_*
+test_*.gcode
 *_output.gcode
 *_out.gcode
 *_single.gcode
@@ -51,5 +51,5 @@ test_*
 !test_example.gcode
 
 # Config (use template instead)
-# config.yaml - users should have their own local copy
+config.yaml  # Users should have their own local copy - use config_template.yaml as reference
 config_local.yaml
