@@ -237,7 +237,7 @@ Curve points too conservative:
 
 Special thanks to:
 - **Dmitry** for inspiration and valuable feedback
-- **K3D community** for pioneering ultra high-flow hotend development and testing
+- **K3D community** 
 
 Created to address underextrusion issues with high-flow hotends like K3D Microfeeder, Rapido HF, and similar setups.
 
