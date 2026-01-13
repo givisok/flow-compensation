@@ -233,6 +233,14 @@ Curve points too conservative:
 - `config_template.yaml` - Template with detailed documentation
 - `requirements.txt` - Python dependencies
 
+## Credits
+
+Special thanks to:
+- **Dmitry** for inspiration and valuable feedback
+- **K3D community** for pioneering ultra high-flow hotend development and testing
+
+Created to address underextrusion issues with high-flow hotends like K3D Microfeeder, Rapido HF, and similar setups.
+
 ## License
 
 MIT License - Feel free to modify and distribute.
