@@ -229,14 +229,14 @@ Curve points too conservative:
 ## Files
 
 - `flow_compensator.py` - Main script
-- `config.yaml` - Default material profiles
+- `config.yaml` - Default material profiles (create your own form config_template.yaml)
 - `config_template.yaml` - Template with detailed documentation
 - `requirements.txt` - Python dependencies
 
 ## Credits
 
 Special thanks to:
-- **Dmitry** for inspiration and valuable feedback
+- **Dmitry Sorkin** for inspiration and valuable feedback
 - **K3D community** 
 
 Created to address underextrusion issues with high-flow hotends like K3D Microfeeder, Rapido HF, and similar setups.
