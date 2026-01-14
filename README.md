@@ -239,7 +239,7 @@ Special thanks to:
 - **Dmitry Sorkin** for idea and inspiration 
 - **K3D community** 
 
-Created to address underextrusion issues with high-flow hotends like K3D Microfeeder, Rapido HF, and similar setups.
+Created to address underextrusion issues with high-flow hotends like Goliath, Rapido HF, and similar setups.
 
 ## License
 
