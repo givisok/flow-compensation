@@ -6,7 +6,7 @@ Post-processing script to compensate for underextrusion at high volumetric flow 
 This script parses G-code files, calculates volumetric flow rates for each extrusion move,
 and applies dynamic flow compensation based on a configurable cubic spline curve.
 
-Author: Generated for high-flow hotend compensation
+Author: Givisok
 License: MIT
 """
 
@@ -15,42 +15,69 @@ import math
 import re
 import sys
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-import yaml
-import numpy as np
+import yaml  # type: ignore
 from scipy.interpolate import PchipInterpolator
+
+# Try to import gcodeparser library
+try:
+    from gcodeparser import parse_gcode_lines  # type: ignore
+
+    HAS_GCODEPARSER = True
+except ImportError:
+    HAS_GCODEPARSER = False
 
 
 class GCodeParser:
     """Parser for G-code files that extracts metadata and processes moves."""
 
-    # Regex patterns for G-code parsing
-    G1_PATTERN = re.compile(r'^G[01]')
-    EXTRUSION_PATTERN = re.compile(r'E([\-+]?\d*\.?\d+)')
-    FEEDRATE_PATTERN = re.compile(r'F([\-+]?\d*\.?\d+)')
-    XYZ_PATTERN = re.compile(r'([XYZ])([\-+]?\d*\.?\d+)')
-    TOOL_CHANGE_PATTERN = re.compile(r'^T(\d+)')  # T0, T1, T2, etc.
+    # Regex patterns for G-code parsing (used in regex mode)
+    G1_PATTERN = re.compile(r"^G[01]")
+    EXTRUSION_PATTERN = re.compile(r"E([\-+]?\d*\.?\d+)")
+    FEEDRATE_PATTERN = re.compile(r"F([\-+]?\d*\.?\d+)")
+    XYZ_PATTERN = re.compile(r"([XYZ])([\-+]?\d*\.?\d+)")
+    TOOL_CHANGE_PATTERN = re.compile(r"^T(\d+)")  # T0, T1, T2, etc.
 
     # Metadata patterns
-    FILAMENT_TYPE_PATTERN = re.compile(r'filament_type\s*=\s*(\w+)', re.IGNORECASE)
-    FILAMENT_DIAMETER_PATTERN = re.compile(r'M200\s*D([\-+]?\d*\.?\d+)', re.IGNORECASE)
-    LAYER_HEIGHT_PATTERN = re.compile(r'layer_height\s*=\s*([\-+]?\d*\.?\d+)', re.IGNORECASE)
-    LINE_WIDTH_PATTERN = re.compile(r'line_width\s*=\s*([\-+]?\d*\.?\d+)', re.IGNORECASE)
+    FILAMENT_TYPE_PATTERN = re.compile(r"filament_type\s*=\s*(\w+)", re.IGNORECASE)
+    FILAMENT_DIAMETER_PATTERN = re.compile(r"M200\s*D([\-+]?\d*\.?\d+)", re.IGNORECASE)
+    LAYER_HEIGHT_PATTERN = re.compile(r"layer_height\s*=\s*([\-+]?\d*\.?\d+)", re.IGNORECASE)
+    LINE_WIDTH_PATTERN = re.compile(r"line_width\s*=\s*([\-+]?\d*\.?\d+)", re.IGNORECASE)
 
-    def __init__(self, filepath: Path):
+    def __init__(self, filepath: Path, parser_mode: str = "library"):
+        """
+        Initialize G-code parser.
+
+        Args:
+            filepath: Path to G-code file
+            parser_mode: "library" (gcodeparser) or "regex"
+        """
         self.filepath = filepath
-        self.lines: List[str] = []
+        self.parser_mode = parser_mode
+        self.lines: List[Union[str, Any]] = []  # Can be str or gcodeparser.Line
         self.metadata: Dict[str, Any] = {
-            'filament_type': None,
-            'filament_diameter': None,
-            'layer_height': None,
-            'line_width': None,
+            "filament_type": None,
+            "filament_diameter": None,
+            "layer_height": None,
+            "line_width": None,
         }
+
+        if parser_mode == "library" and not HAS_GCODEPARSER:
+            print("Warning: gcodeparser library not found, falling back to regex parser.")
+            print("Install with: pip install gcodeparser")
+            self.parser_mode = "regex"
 
     def parse_metadata(self) -> Dict[str, Any]:
         """Extract metadata from G-code header comments and commands."""
-        with open(self.filepath, 'r', encoding='utf-8', errors='ignore') as f:
+        if self.parser_mode == "library":
+            return self._parse_metadata_library()
+        else:
+            return self._parse_metadata_regex()
+
+    def _parse_metadata_regex(self) -> Dict[str, Any]:
+        """Extract metadata using regex parsing."""
+        with open(self.filepath, "r", encoding="utf-8", errors="ignore") as f:
             # Read first 500 lines for metadata (typically in header)
             for i, line in enumerate(f):
                 if i > 500:
@@ -59,35 +86,63 @@ class GCodeParser:
 
         return self.metadata
 
+    def _parse_metadata_library(self) -> Dict[str, Any]:
+        """Extract metadata using gcodeparser library."""
+        with open(self.filepath, "r", encoding="utf-8", errors="ignore") as f:
+            gcode_lines = list(parse_gcode_lines(f, include_comments=True))  # type: ignore
+
+        # Read first 500 lines for metadata
+        for i, line in enumerate(gcode_lines):
+            if i > 500:
+                break
+            # Get raw text from line object
+            line_text = line.gcode_str if hasattr(line, "gcode_str") else str(line)
+            self._extract_metadata_from_line(line_text)
+
+        return self.metadata
+
     def _extract_metadata_from_line(self, line: str):
         """Extract metadata from a single G-code line."""
         # Check for filament type in comments
         ft_match = self.FILAMENT_TYPE_PATTERN.search(line)
-        if ft_match and self.metadata['filament_type'] is None:
-            self.metadata['filament_type'] = ft_match.group(1).upper()
+        if ft_match and self.metadata["filament_type"] is None:
+            self.metadata["filament_type"] = ft_match.group(1).upper()
 
         # Check for filament diameter from M200 command
         fd_match = self.FILAMENT_DIAMETER_PATTERN.search(line)
-        if fd_match and self.metadata['filament_diameter'] is None:
-            self.metadata['filament_diameter'] = float(fd_match.group(1))
+        if fd_match and self.metadata["filament_diameter"] is None:
+            self.metadata["filament_diameter"] = float(fd_match.group(1))
 
         # Check for layer height
         lh_match = self.LAYER_HEIGHT_PATTERN.search(line)
-        if lh_match and self.metadata['layer_height'] is None:
-            self.metadata['layer_height'] = float(lh_match.group(1))
+        if lh_match and self.metadata["layer_height"] is None:
+            self.metadata["layer_height"] = float(lh_match.group(1))
 
         # Check for line width
         lw_match = self.LINE_WIDTH_PATTERN.search(line)
-        if lw_match and self.metadata['line_width'] is None:
-            self.metadata['line_width'] = float(lw_match.group(1))
+        if lw_match and self.metadata["line_width"] is None:
+            self.metadata["line_width"] = float(lw_match.group(1))
 
     def read_all_lines(self):
-        """Read all lines from the G-code file."""
-        with open(self.filepath, 'r', encoding='utf-8', errors='ignore') as f:
+        """Read all lines from G-code file."""
+        if self.parser_mode == "library":
+            self._read_all_lines_library()
+        else:
+            self._read_all_lines_regex()
+
+    def _read_all_lines_regex(self):
+        """Read all lines using regex mode."""
+        with open(self.filepath, "r", encoding="utf-8", errors="ignore") as f:
             self.lines = f.readlines()
 
-    def parse_move(self, line: str, current_pos: Dict[str, float],
-                   current_feedrate: float) -> Tuple[Optional[Dict], Dict[str, float], float]:
+    def _read_all_lines_library(self):
+        """Read all lines using gcodeparser library."""
+        with open(self.filepath, "r", encoding="utf-8", errors="ignore") as f:
+            self.lines = list(parse_gcode_lines(f, include_comments=True))  # type: ignore
+
+    def parse_move(
+        self, line: str, current_pos: Dict[str, float], current_feedrate: float
+    ) -> Tuple[Optional[Dict], Dict[str, float], float]:
         """
         Parse a G1/G0 move line.
 
@@ -97,6 +152,15 @@ class GCodeParser:
             - updated_position: dict with x, y, z, e values
             - updated_feedrate: current feedrate in mm/min
         """
+        if self.parser_mode == "library":
+            return self._parse_move_library(line, current_pos, current_feedrate)
+        else:
+            return self._parse_move_regex(line, current_pos, current_feedrate)
+
+    def _parse_move_regex(
+        self, line: str, current_pos: Dict[str, float], current_feedrate: float
+    ) -> Tuple[Optional[Dict], Dict[str, float], float]:
+        """Parse move using regex."""
         if not self.G1_PATTERN.match(line):
             return None, current_pos, current_feedrate
 
@@ -122,32 +186,44 @@ class GCodeParser:
             return None, new_pos, current_feedrate
 
         # Calculate move distance
-        dx = new_pos.get('x', current_pos.get('x', 0)) - current_pos.get('x', 0)
-        dy = new_pos.get('y', current_pos.get('y', 0)) - current_pos.get('y', 0)
-        dz = new_pos.get('z', current_pos.get('z', 0)) - current_pos.get('z', 0)
+        dx = new_pos.get("x", current_pos.get("x", 0)) - current_pos.get("x", 0)
+        dy = new_pos.get("y", current_pos.get("y", 0)) - current_pos.get("y", 0)
+        dz = new_pos.get("z", current_pos.get("z", 0)) - current_pos.get("z", 0)
         distance = math.sqrt(dx**2 + dy**2 + dz**2)
 
         move_info = {
-            'extrusion': abs(extrusion_amount),
-            'distance': distance,
-            'feedrate': current_feedrate,  # mm/min
+            "extrusion": abs(extrusion_amount),
+            "distance": distance,
+            "feedrate": current_feedrate,  # mm/min
         }
 
         # Update E position
-        new_pos['e'] = current_pos.get('e', 0) + extrusion_amount
+        new_pos["e"] = current_pos.get("e", 0) + extrusion_amount
 
         return move_info, new_pos, current_feedrate
+
+    def _parse_move_library(
+        self, line: str, current_pos: Dict[str, float], current_feedrate: float
+    ) -> Tuple[Optional[Dict], Dict[str, float], float]:
+        """Parse move using gcodeparser library."""
+        # Check if line starts with G0 or G1
+        if not self.G1_PATTERN.match(line):
+            return None, current_pos, current_feedrate
+
+        # Parse using regex patterns (gcodeparser doesn't expose easy access to params)
+        # We'll use our regex patterns on the line string
+        return self._parse_move_regex(line, current_pos, current_feedrate)
 
 
 class FlowCompensator:
     """Main flow compensation engine with multi-material support."""
 
-    EXTRUSION_PATTERN = re.compile(r'E([\-+]?\d*\.?\d+)')
+    EXTRUSION_PATTERN = re.compile(r"E([\-+]?\d*\.?\d+)")
 
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.filament_diameter = None
-        self.filament_area = None
+        self.filament_diameter: float = 1.75
+        self.filament_area: float = 2.4053
 
         # Multi-material support: profiles per tool
         self.tool_profiles: Dict[int, Dict] = {}  # {tool_num: {material, spline, profile}}
@@ -161,34 +237,34 @@ class FlowCompensator:
         """Initialize statistics for a tool."""
         if tool_num not in self.stats:
             self.stats[tool_num] = {
-                'total_moves': 0,
-                'compensated_moves': 0,
-                'min_flow': float('inf'),
-                'max_flow': 0,
-                'avg_flow': 0,
-                'total_flow': 0,
-                'min_multiplier': float('inf'),
-                'max_multiplier': 0,
+                "total_moves": 0,
+                "compensated_moves": 0,
+                "min_flow": float("inf"),
+                "max_flow": 0,
+                "avg_flow": 0,
+                "total_flow": 0,
+                "min_multiplier": float("inf"),
+                "max_multiplier": 0,
             }
 
-    def _get_material_profile(self, material_type: str) -> Optional[Dict]:
+    def _get_material_profile(self, material_type: str) -> Optional[Dict[str, Any]]:
         """Get material profile from config (case-insensitive)."""
-        materials = self.config.get('materials', {})
+        materials = self.config.get("materials", {})
 
         # Try exact match first
         if material_type in materials:
-            return materials[material_type]
+            return materials[material_type]  # type: ignore
 
         # Try case-insensitive match
         for key, value in materials.items():
             if key.upper() == material_type.upper():
-                return value
+                return value  # type: ignore
 
         return None
 
     def _build_spline_for_profile(self, profile: Dict) -> PchipInterpolator:
         """Build PCHIP spline from material profile curve points."""
-        curve_points = profile.get('curve_points', [])
+        curve_points = profile.get("curve_points", [])
         if len(curve_points) < 2:
             raise ValueError("At least 2 curve points required for interpolation")
 
@@ -200,15 +276,15 @@ class FlowCompensator:
 
     def load_material_profile(self, material_type: Optional[str] = None, tool_num: int = 0):
         """Load material profile for a specific tool."""
-        materials = self.config.get('materials', {})
+        materials = self.config.get("materials", {})
         profile = None
 
         if material_type:
             profile = self._get_material_profile(material_type)
 
         if not profile:
-            fallback = self.config.get('auto_detect', {}).get('fallback_material', 'default')
-            profile = materials.get(fallback, materials.get('default'))
+            fallback = self.config.get("auto_detect", {}).get("fallback_material", "default")
+            profile = materials.get(fallback, materials.get("default"))
             material_name = fallback
             if material_type:
                 print(f"Material '{material_type}' not found, using fallback: {fallback}")
@@ -223,9 +299,9 @@ class FlowCompensator:
 
         # Store profile for this tool
         self.tool_profiles[tool_num] = {
-            'material': material_name,
-            'profile': profile,
-            'spline': spline
+            "material": material_name,
+            "profile": profile,
+            "spline": spline,
         }
 
         # Initialize stats for this tool
@@ -235,7 +311,7 @@ class FlowCompensator:
 
     def load_extruder_mapping(self):
         """Load all tools from extruder_mapping config."""
-        mapping = self.config.get('extruder_mapping', {})
+        mapping = self.config.get("extruder_mapping", {})
 
         if not mapping:
             # No mapping configured, use single material mode
@@ -244,7 +320,7 @@ class FlowCompensator:
         print(f"Loading {len(mapping)} tools from extruder_mapping:")
         for tool_str, material in mapping.items():
             # Parse "T0", "T1", etc.
-            if tool_str.upper().startswith('T'):
+            if tool_str.upper().startswith("T"):
                 try:
                     tool_num = int(tool_str[1:])
                     self.load_material_profile(material, tool_num)
@@ -254,14 +330,14 @@ class FlowCompensator:
         return len(self.tool_profiles) > 0
 
     def set_active_tool(self, tool_num: int):
-        """Set the active tool for compensation."""
+        """Set active tool for compensation."""
         self.active_tool = tool_num
 
     def get_active_tool_material(self) -> str:
-        """Get the material name for the active tool."""
+        """Get material name for active tool."""
         if self.active_tool in self.tool_profiles:
-            return self.tool_profiles[self.active_tool]['material']
-        return 'unknown'
+            return self.tool_profiles[self.active_tool]["material"]  # type: ignore
+        return "unknown"
 
     def build_spline(self):
         """Legacy method - kept for backward compatibility."""
@@ -269,8 +345,8 @@ class FlowCompensator:
             # Already built during load_material_profile
             tool_0 = self.tool_profiles.get(0)
             if tool_0:
-                spline = tool_0['spline']
-                print(f"Built spline with control points")
+                spline = tool_0["spline"]
+                print("Built spline with control points")
                 print(f"Flow rate range: {spline.x[0]:.1f} - {spline.x[-1]:.1f} mm3/s")
                 return
 
@@ -290,13 +366,18 @@ class FlowCompensator:
 
         Args:
             extrusion: Extrusion amount in mm
-            distance: Move distance in mm
+            distance: Move distance in mm (includes Z movement for blob tests)
             feedrate: Feedrate in mm/min
 
         Returns:
             Volumetric flow rate in mm³/s
         """
         if distance == 0:
+            # For pure extrusion moves (no XYZ movement), estimate from feedrate
+            # This handles blob printing where extrusion happens without XY travel
+            # Flow rate ≈ extrusion_volume / (distance / feedrate)
+            # But since distance=0, we need to estimate time differently
+            # For blob tests: assume reasonable time factor or skip
             return 0.0
 
         # Flow rate = (extrusion_length * filament_area / distance) * feedrate
@@ -318,7 +399,7 @@ class FlowCompensator:
         if self.active_tool not in self.tool_profiles:
             return 1.0  # No compensation if tool not configured
 
-        spline = self.tool_profiles[self.active_tool]['spline']
+        spline = self.tool_profiles[self.active_tool]["spline"]
 
         # Clamp flow rate to spline range
         x_min = spline.x[0]
@@ -332,14 +413,14 @@ class FlowCompensator:
             flow_rate_clamped = flow_rate
 
         # Get multiplier from spline
-        multiplier = float(spline(flow_rate_clamped))
+        multiplier = float(spline(flow_rate_clamped))  # type: ignore
 
         # Apply safety limits
-        min_comp = self.config.get('output', {}).get('min_compensation', 0.8)
-        max_comp = self.config.get('output', {}).get('max_compensation', 1.5)
+        min_comp = self.config.get("output", {}).get("min_compensation", 0.8)
+        max_comp = self.config.get("output", {}).get("max_compensation", 1.5)
         multiplier = max(min_comp, min(max_comp, multiplier))
 
-        return multiplier
+        return multiplier  # type: ignore
 
     def compensate_line(self, line: str, move_info: Dict) -> str:
         """
@@ -352,97 +433,114 @@ class FlowCompensator:
         Returns:
             Modified G-code line with compensation applied
         """
-        extrusion = move_info['extrusion']
-        distance = move_info['distance']
-        feedrate = move_info['feedrate']
+        extrusion = move_info["extrusion"]
+        distance = move_info["distance"]
+        feedrate = move_info["feedrate"]
 
         # Calculate flow rate
         flow_rate = self.calculate_flow_rate(extrusion, distance, feedrate)
 
         # Update statistics for active tool
         tool_stats = self.stats[self.active_tool]
-        tool_stats['total_moves'] += 1
-        tool_stats['total_flow'] += flow_rate
-        tool_stats['min_flow'] = min(tool_stats['min_flow'], flow_rate)
-        tool_stats['max_flow'] = max(tool_stats['max_flow'], flow_rate)
+        tool_stats["total_moves"] += 1
+        tool_stats["total_flow"] += flow_rate
+        tool_stats["min_flow"] = min(tool_stats["min_flow"], flow_rate)
+        tool_stats["max_flow"] = max(tool_stats["max_flow"], flow_rate)
 
         # Get compensation multiplier
         multiplier = self.get_compensation_multiplier(flow_rate)
 
         # Update multiplier statistics
-        tool_stats['min_multiplier'] = min(tool_stats['min_multiplier'], multiplier)
-        tool_stats['max_multiplier'] = max(tool_stats['max_multiplier'], multiplier)
+        tool_stats["min_multiplier"] = min(tool_stats["min_multiplier"], multiplier)
+        tool_stats["max_multiplier"] = max(tool_stats["max_multiplier"], multiplier)
 
         # Check if compensation is needed
         if abs(multiplier - 1.0) < 0.001:
             return line  # No significant compensation needed
 
         # Apply compensation
-        tool_stats['compensated_moves'] += 1
+        tool_stats["compensated_moves"] += 1
 
         # Find and replace E value
         def replace_e(match):
             original_e = float(match.group(1))
             new_e = original_e * multiplier
-            return f'E{new_e:.6f}'.rstrip('0').rstrip('.')
+            return f"E{new_e:.6f}".rstrip("0").rstrip(".")
 
         compensated_line = self.EXTRUSION_PATTERN.sub(replace_e, line)
 
         # Add comment if enabled
-        if self.config.get('output', {}).get('log_changes', True):
+        if self.config.get("output", {}).get("log_changes", True):
             material_tag = f" T{self.active_tool}" if len(self.tool_profiles) > 1 else ""
-            compensated_line = compensated_line.rstrip() + f" ; flow_comp{material_tag}: {flow_rate:.1f}mm3/s x{multiplier:.3f}\n"
+            compensated_line = (
+                compensated_line.rstrip()
+                + f" ; flow_comp{material_tag}: {flow_rate:.1f}mm3/s x{multiplier:.3f}\n"
+            )
 
         return compensated_line
 
     def print_statistics(self):
         """Print processing statistics."""
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("FLOW COMPENSATION STATISTICS")
-        print("="*60)
+        print("=" * 60)
 
         # Multi-tool mode: show stats per tool
-        if len(self.stats) > 1 or any(s['total_moves'] > 0 for s in self.stats.values()):
+        if len(self.stats) > 1 or any(s["total_moves"] > 0 for s in self.stats.values()):
             for tool_num in sorted(self.stats.keys()):
                 stats = self.stats[tool_num]
-                if stats['total_moves'] == 0:
+                if stats["total_moves"] == 0:
                     continue
 
-                material = self.tool_profiles.get(tool_num, {}).get('material', 'unknown')
-                avg_flow = stats['total_flow'] / stats['total_moves'] if stats['total_moves'] > 0 else 0
+                material = self.tool_profiles.get(tool_num, {}).get("material", "unknown")
+                avg_flow = (
+                    stats["total_flow"] / stats["total_moves"] if stats["total_moves"] > 0 else 0
+                )
 
                 print(f"\nTool T{tool_num} ({material}):")
                 print(f"  Total moves:     {stats['total_moves']}")
-                print(f"  Compensated:     {stats['compensated_moves']} ({100*stats['compensated_moves']/stats['total_moves']:.1f}%)")
+                print(
+                    f"  Compensated:     {stats['compensated_moves']} ({100*stats['compensated_moves']/stats['total_moves']:.1f}%)"
+                )
                 print(f"  Flow range:      {stats['min_flow']:.1f} - {stats['max_flow']:.1f} mm3/s")
                 print(f"  Avg flow:        {avg_flow:.1f} mm3/s")
-                print(f"  Multiplier:      {stats['min_multiplier']:.3f} - {stats['max_multiplier']:.3f}x")
+                print(
+                    f"  Multiplier:      {stats['min_multiplier']:.3f} - {stats['max_multiplier']:.3f}x"
+                )
 
             # Total across all tools
-            total_moves = sum(s['total_moves'] for s in self.stats.values())
-            total_comp = sum(s['compensated_moves'] for s in self.stats.values())
+            total_moves = sum(s["total_moves"] for s in self.stats.values())
+            total_comp = sum(s["compensated_moves"] for s in self.stats.values())
             if total_moves > 0:
-                print(f"\nTotal: {total_moves} moves, {total_comp} compensated ({100*total_comp/total_moves:.1f}%)")
+                print(
+                    f"\nTotal: {total_moves} moves, {total_comp} compensated ({100*total_comp/total_moves:.1f}%)"
+                )
         else:
             # Single tool mode (backward compatible)
-            stats = self.stats.get(0, {'total_moves': 0})
-            if stats['total_moves'] == 0:
+            stats = self.stats.get(0, {"total_moves": 0})
+            if stats["total_moves"] == 0:
                 print("\nNo extrusion moves found to process.")
                 return
 
-            avg_flow = stats['total_flow'] / stats['total_moves']
+            avg_flow = stats["total_flow"] / stats["total_moves"]
             print(f"Total extrusion moves:     {stats['total_moves']}")
-            print(f"Compensated moves:         {stats['compensated_moves']} ({100*stats['compensated_moves']/stats['total_moves']:.1f}%)")
-            print(f"\nFlow rate range:           {stats['min_flow']:.1f} - {stats['max_flow']:.1f} mm3/s")
+            print(
+                f"Compensated moves:         {stats['compensated_moves']} ({100*stats['compensated_moves']/stats['total_moves']:.1f}%)"
+            )
+            print(
+                f"\nFlow rate range:           {stats['min_flow']:.1f} - {stats['max_flow']:.1f} mm3/s"
+            )
             print(f"Average flow rate:         {avg_flow:.1f} mm3/s")
-            print(f"\nMultiplier range:          {stats['min_multiplier']:.3f} - {stats['max_multiplier']:.3f}x")
+            print(
+                f"\nMultiplier range:          {stats['min_multiplier']:.3f} - {stats['max_multiplier']:.3f}x"
+            )
 
-        print("="*60)
+        print("=" * 60)
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Flow Compensator for Prusa Slicer - Compensate for underextrusion at high flow rates',
+        description="Flow Compensator for Prusa Slicer - Compensate for underextrusion at high flow rates",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -455,28 +553,54 @@ Examples:
   # Multi-material (IDEX/toolchanger) - materials map to T0, T1, T2...
   python flow_compensator.py input.gcode output.gcode PETG PVA PLA
 
+  # Use regex parser (for testing/comparison)
+  python flow_compensator.py --parser regex input.gcode output.gcode
+
   # Dry run (analyze without modifying)
   python flow_compensator.py --dry-run input.gcode
 
   # Use custom config
   python flow_compensator.py --config my_config.yaml input.gcode output.gcode
-        """
+        """,
     )
 
-    parser.add_argument('input', help='Input G-code file')
-    parser.add_argument('output', nargs='?', help='Output G-code file (default: overwrite input)')
-    parser.add_argument('--config', default='config.yaml', help='Configuration file (default: config.yaml)')
-    parser.add_argument('--material', help='Override material profile (PETG, PLA, ABS, etc.)')
-    parser.add_argument('--dry-run', action='store_true', help='Analyze without modifying file')
-    parser.add_argument('--no-comments', action='store_true', help='Don\'t add compensation comments to G-code')
-    parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed processing information')
+    parser.add_argument("input", help="Input G-code file")
+    parser.add_argument(
+        "output",
+        nargs="?",
+        help="Output G-code file (default: overwrite input)",
+    )
+    parser.add_argument(
+        "--config",
+        default="config.yaml",
+        help="Configuration file (default: config.yaml)",
+    )
+    parser.add_argument("--material", help="Override material profile (PETG, PLA, ABS, etc.)")
+    parser.add_argument(
+        "--parser",
+        choices=["library", "regex"],
+        default="library",
+        help="Parser mode: library (gcodeparser, default) or regex (for testing)",
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Analyze without modifying file")
+    parser.add_argument(
+        "--no-comments",
+        action="store_true",
+        help="Don't add compensation comments to G-code",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show detailed processing information",
+    )
 
     args, remaining = parser.parse_known_args()
 
     # Remaining arguments are treated as materials for multi-material setup (T0, T1, T2, ...)
     materials_from_args = []
     for arg in remaining:
-        if not arg.startswith('-'):  # Not a flag
+        if not arg.startswith("-"):  # Not a flag
             materials_from_args.append(arg.upper())
 
     # Load configuration
@@ -487,7 +611,7 @@ Examples:
         # Could create default config here if needed
         sys.exit(1)
 
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
     # Parse input file
@@ -497,7 +621,7 @@ Examples:
         sys.exit(1)
 
     print(f"Parsing: {input_path}")
-    parser_gcode = GCodeParser(input_path)
+    parser_gcode = GCodeParser(input_path, parser_mode=args.parser)
     metadata = parser_gcode.parse_metadata()
 
     print(f"Detected metadata:")
@@ -507,7 +631,7 @@ Examples:
     print(f"  Line width:       {metadata['line_width'] or 'Not found'} mm")
 
     # Determine material
-    material = args.material or metadata.get('filament_type')
+    material = args.material or metadata.get("filament_type")
     if material:
         material = material.upper()
 
@@ -542,38 +666,44 @@ Examples:
         compensator.build_spline()
 
     # Set filament diameter
-    filament_diameter = metadata.get('filament_diameter')
+    filament_diameter = metadata.get("filament_diameter")
     if not filament_diameter:
-        filament_diameter = config.get('detection', {}).get('filament_diameter', 1.75)
+        filament_diameter = config.get("detection", {}).get("filament_diameter", 1.75)
         print(f"Using default filament diameter: {filament_diameter} mm")
     compensator.set_filament_diameter(filament_diameter)
 
     # Disable comments if requested
     if args.no_comments:
-        config['output']['log_changes'] = False
+        config["output"]["log_changes"] = False
 
     # Read all lines
     parser_gcode.read_all_lines()
 
     # Process G-code
     print(f"\nProcessing {len(parser_gcode.lines)} lines...")
+    print(f"Using parser: {args.parser}")
 
     output_lines = []
-    current_pos = {'x': 0, 'y': 0, 'z': 0, 'e': 0}
+    current_pos: Dict[str, float] = {"x": 0.0, "y": 0.0, "z": 0.0, "e": 0.0}
     current_feedrate = 0.0
 
     for i, line in enumerate(parser_gcode.lines):
+        # Convert to string if using library parser
+        line_str = (
+            line.gcode_str if args.parser == "library" and hasattr(line, "gcode_str") else str(line)
+        )
+
         # Check for tool change command (T0, T1, T2, ...)
-        tool_match = GCodeParser.TOOL_CHANGE_PATTERN.match(line.strip())
+        tool_match = GCodeParser.TOOL_CHANGE_PATTERN.match(line_str.strip())
         if tool_match and has_multi_material:
             new_tool = int(tool_match.group(1))
             if new_tool in compensator.tool_profiles:
                 compensator.set_active_tool(new_tool)
-                output_lines.append(line)  # Keep original T command
+                output_lines.append(line_str)  # Keep original T command
                 continue
 
         move_info, new_pos, new_feedrate = parser_gcode.parse_move(
-            line, current_pos, current_feedrate
+            line_str, current_pos, current_feedrate
         )
 
         # Always update position and feedrate (even for travel moves)
@@ -582,23 +712,23 @@ Examples:
 
         if move_info:
             # Apply compensation
-            compensated_line = compensator.compensate_line(line, move_info)
+            compensated_line = compensator.compensate_line(line_str, move_info)
             output_lines.append(compensated_line)
 
-            if args.verbose and move_info['distance'] > 0:
+            if args.verbose and move_info["distance"] > 0:
                 flow_rate = compensator.calculate_flow_rate(
-                    move_info['extrusion'],
-                    move_info['distance'],
-                    move_info['feedrate']
+                    move_info["extrusion"],
+                    move_info["distance"],
+                    move_info["feedrate"],
                 )
                 multiplier = compensator.get_compensation_multiplier(flow_rate)
                 tool_info = f" T{compensator.active_tool}" if has_multi_material else ""
                 print(f"Line {i+1}{tool_info}: flow={flow_rate:.1f} mm3/s, mult={multiplier:.3f}x")
         else:
-            output_lines.append(line)
+            output_lines.append(line_str)
 
     # Print statistics
-    if config.get('output', {}).get('statistics', True):
+    if config.get("output", {}).get("statistics", True):
         compensator.print_statistics()
 
     # Write output
@@ -606,10 +736,10 @@ Examples:
         print("\nDry run mode - no output file written.")
     else:
         output_path = Path(args.output) if args.output else input_path
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             f.writelines(output_lines)
         print(f"\nOutput written to: {output_path}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

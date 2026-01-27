@@ -1,6 +1,16 @@
 # Flow Compensator for Prusa Slicer
 # Post-processing script to compensate for underextrusion at high flow rates
 
+# Core dependencies
 PyYAML>=6.0
 scipy>=1.9.0
 numpy>=1.21.0
+
+# G-code parsing
+gcodeparser>=1.0
+
+# Code quality
+black>=22.0.0
+flake8>=5.0.0
+isort>=5.10.0
+mypy>=0.990

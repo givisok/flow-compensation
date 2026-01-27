@@ -8,18 +8,20 @@ interpolation:
 materials:
   PETG:
     name: "PETG"
-    description: "PETG compensation based on flow rate test at 248C (K3D Microfeeder)"
-    # Based on measured underextrusion data from Goliath flowrate test
-    # Source: actual test measurements
+    description: "PETG compensation based on flow rate test at 240°C"
+    # Based on actual flow rate test measurements (grams extruded)
+    # Baseline: 10 mm³/s @ 0.63g = 1.000 (no compensation)
     curve_points:
-      - [0, 1.00]    # flow_rate (mm³/s) -> compensation_multiplier
-      - [10, 1.00]   # Below 10 mm³/s: no compensation needed
-      - [15, 1.016]  # 15 mm³/s: -1.55% underextrusion → ×1.0155
-      - [20, 1.025]  # 20 mm³/s: -2.5% underextrusion → ×1.025
-      - [30, 1.060]  # 30 mm³/s: -6% underextrusion → ×1.060
-      - [40, 1.080]  # 40 mm³/s: -8% underextrusion → ×1.080
-      - [50, 1.091]  # 50 mm³/s: -9.14% underextrusion → ×1.091
-      - [60, 1.110]  # 60 mm³/s: ~-11% underextrusion → ×1.110
+      - [0, 1.00]    # Baseline (no compensation)
+      - [10, 1.00]   # 10 mm³/s: 0.63g (baseline, no compensation)
+      - [14, 1.016]  # 14 mm³/s: 0.62g (-1.6% underextrusion)
+      - [16, 1.016]  # 16 mm³/s: 0.62g (-1.6% underextrusion)
+      - [18, 1.016]  # 18 mm³/s: 0.62g (-1.6% underextrusion)
+      - [20, 1.016]  # 20 mm³/s: 0.62g (-1.6% underextrusion)
+      - [22, 1.033]  # 22 mm³/s: 0.61g (-3.2% underextrusion)
+      - [26, 1.033]  # 26 mm³/s: 0.61g (-3.2% underextrusion, stable up to here)
+      - [28, 1.125]  # 28 mm³/s: 0.56g (-11% underextrusion, skips begin)
+      - [31, 1.286]  # 31 mm³/s: 0.49g (-22% underextrusion, severe skips)
 
   PLA:
     name: "PLA"

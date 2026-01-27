@@ -54,5 +54,12 @@ test_*.gcode
 config.yaml  # Users should have their own local copy - use config_template.yaml as reference
 config_local.yaml
 
+# Documentation (keep specific ones)
 *.md
 !README.md
+!AGENTS.md
+
+# Code quality
+.pytest_cache/
+.coverage
+htmlcov/
