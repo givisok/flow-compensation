@@ -57,6 +57,7 @@ config_local.yaml
 # Documentation (keep specific ones)
 *.md
 !README.md
+!README_RU.md
 !AGENTS.md
 
 # Code quality

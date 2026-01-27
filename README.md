@@ -1,3 +1,7 @@
+[English](README.md) | [Русский](README_RU.md)
+
+---
+
 # ⚠️ WARNING - USE AT YOUR OWN RISK ⚠️
 
 **THIS SOFTWARE HAS NOT BEEN TESTED ON ACTUAL 3D PRINTERS.**
@@ -45,6 +49,8 @@ pip install -r requirements.txt
 
 Required: Python 3.7+, PyYAML>=6.0, scipy>=1.9.0, numpy>=1.21.0
 
+Optional: gcodeparser>=1.0 (provides library-based G-code parsing, recommended)
+
 ## Quick Start
 
 ### Command Line
@@ -56,14 +62,23 @@ python flow_compensator.py input.gcode output.gcode
 # Specify material explicitly
 python flow_compensator.py --material PETG input.gcode output.gcode
 
+# Multi-material IDEX (materials map to T0, T1, ...)
+python flow_compensator.py input.gcode output.gcode PETG PVA PLA
+
 # Dry run (analyze without modifying)
 python flow_compensator.py --dry-run input.gcode
 
 # Custom config file
 python flow_compensator.py --config my_profile.yaml input.gcode output.gcode
 
-# Multi-material IDEX (materials map to T0, T1, ...)
-python flow_compensator.py input.gcode output.gcode PETG PVA PLA
+# Use regex parser (for testing/comparison)
+python flow_compensator.py --parser regex input.gcode output.gcode
+
+# Verbose mode - show detailed processing info
+python flow_compensator.py --verbose input.gcode output.gcode
+
+# Disable compensation comments
+python flow_compensator.py --no-comments input.gcode output.gcode
 ```
 
 ### Prusa Slicer Integration
@@ -78,6 +93,16 @@ python.exe "C:\path\to\flow_compensator.py" --config "C:\path\to\config.yaml" --
 **Multi-material IDEX (automatic T0/T1 mapping):**
 ```
 python.exe "C:\path\to\flow_compensator.py" --config "C:\path\to\config.yaml" "[output_filepath]" {filament_type[0]} {filament_type[1]}
+```
+
+**With verbose output:**
+```
+python.exe "C:\path\to\flow_compensator.py" --config "C:\path\to\config.yaml" --verbose "[output_filepath]"
+```
+
+**Without compensation comments:**
+```
+python.exe "C:\path\to\flow_compensator.py" --config "C:\path\to\config.yaml" --no-comments "[output_filepath]"
 ```
 
 **Linux/macOS:**
@@ -107,7 +132,7 @@ materials:
 
 ### Creating Your Own Profile
 
-1. Print a flow rate test (e.g., [Goliath Flowrate Test](https://k3d.tech/articles/ultra_high_flow_hotends/))
+1. Print a flow rate test (e.g.,  [Сnckitchen Flow Test](https://www.cnckitchen.com/blog/extrusion-system-benchmark-tool-for-fast-prints))
 2. Measure underextrusion at various flow rates
 3. Calculate compensation: if -10% underextrusion at 50 mm³/s, use multiplier = 1.10
 4. Add curve points to `config.yaml`
@@ -135,6 +160,26 @@ extruder_mapping:
 python flow_compensator.py input.gcode output.gcode PETG PVA PLA ABS
 ```
 Materials automatically map to T0, T1, T2, T3. No config editing needed!
+
+## Parser Modes
+
+The script supports two G-code parsing modes:
+
+### Library Parser (Recommended)
+Uses the `gcodeparser` library for robust parsing:
+- Handles edge cases and special G-code formats
+- More reliable metadata extraction
+- Better performance for large files
+- Requires `pip install gcodeparser`
+
+### Regex Parser
+Uses regular expressions for parsing:
+- No additional dependencies required
+- Faster for simple G-code files
+- Useful for testing and development
+- Automatically falls back if gcodeparser is not installed
+
+Use `--parser library` or `--parser regex` to select mode.
 
 ## How It Works
 
@@ -170,25 +215,70 @@ Prevents artificial compensation dips (like 0.998x when it should be 1.000x) tha
 
 ## Example Output
 
+### Single Extruder Mode
 ```
 Parsing: test_model.gcode
 Detected metadata:
   Filament type:    PETG
   Filament diameter: 1.75 mm
   Layer height:     0.2 mm
+  Line width:       0.4 mm
 Using material profile: PETG
 Filament diameter: 1.75 mm, area: 2.4053 mm²
 
 Processing 15234 lines...
+Using parser: library
 
 ============================================================
 FLOW COMPENSATION STATISTICS
 ============================================================
 Total extrusion moves:     12458
 Compensated moves:         3842 (30.8%)
+
 Flow rate range:           2.3 - 52.7 mm³/s
 Average flow rate:         18.4 mm³/s
+
 Multiplier range:          1.000 - 1.132x
+============================================================
+```
+
+### Multi-Material IDEX Mode
+```
+Parsing: multi_material_model.gcode
+Detected metadata:
+  Filament type:    PETG
+  Filament diameter: 1.75 mm
+  Layer height:     0.2 mm
+Multi-material setup from command line: 2 tools
+  T0: PETG
+  T1: PVA
+Tool T0: Using material profile: PETG
+Tool T1: Using material profile: PVA
+
+Multi-material mode enabled
+Filament diameter: 1.75 mm, area: 2.4053 mm²
+
+Processing 28456 lines...
+
+============================================================
+FLOW COMPENSATION STATISTICS
+============================================================
+
+Tool T0 (PETG):
+  Total moves:     18234
+  Compensated:     5621 (30.8%)
+  Flow range:      2.3 - 52.7 mm3/s
+  Avg flow:        18.4 mm3/s
+  Multiplier:      1.000 - 1.132x
+
+Tool T1 (PVA):
+  Total moves:     4212
+  Compensated:     1248 (29.6%)
+  Flow range:      1.8 - 15.2 mm3/s
+  Avg flow:        8.7 mm3/s
+  Multiplier:      1.000 - 1.085x
+
+Total: 22446 moves, 6869 compensated (30.6%)
 ============================================================
 ```
 
@@ -225,13 +315,16 @@ Curve points too conservative:
 - **Slicers**: Prusa Slicer, SuperSlicer, Orca Slicer (any with Prusa-style comments)
 - **Platforms**: Windows, Linux, macOS
 - **Python**: 3.7+
+- **Parsers**: Library (gcodeparser) and Regex modes available
+- **Multi-material**: Full support for IDEX and toolchanger systems
 
 ## Files
 
 - `flow_compensator.py` - Main script
-- `config.yaml` - Default material profiles (create your own form config_template.yaml)
+- `config.yaml` - Default material profiles (create your own from config_template.yaml)
 - `config_template.yaml` - Template with detailed documentation
 - `requirements.txt` - Python dependencies
+- `test_flow_compensator.py` - Test suite
 
 ## Credits
 
@@ -244,6 +337,21 @@ Created to address underextrusion issues with high-flow hotends like Goliath, Ra
 ## License
 
 MIT License - Feel free to modify and distribute.
+
+## Testing
+
+Run the test suite to verify installation and code correctness:
+
+```bash
+# Run all tests
+python test_flow_compensator.py -v
+
+# Run specific test class
+python -m unittest test_flow_compensator.TestGCodeParser -v
+
+# Run specific test method
+python -m unittest test_flow_compensator.TestGCodeParser.test_parse_metadata -v
+```
 
 ## Contributing
 
